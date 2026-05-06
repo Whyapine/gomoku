@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五子棋 · 禁手规则</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #1a0a00;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+}
+
+h1 {
+    color: #d4a76a;
+    font-size: 28px;
+    letter-spacing: 4px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.game-area {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.canvas-wrapper {
+    position: relative;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 3px #5a3a1a, 0 0 0 7px #2a1a0a;
+}
+
+canvas {
+    display: block;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 160px;
+}
+
+.turn-indicator {
+    background: #2a1a0a;
+    border: 2px solid #5a3a1a;
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    color: #d4a76a;
+}
+
+.turn-stone {
+    display: inline-block;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    margin-bottom: 8px;
+}
+.turn-stone.black { background: radial-gradient(circle at 35% 35%, #555, #111); }
+.turn-stone.white { background: radial-gradient(circle at 35% 35%, #fff, #bbb); }
+
+.turn-text {
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.status {
+    background: #2a1a0a;
+    border: 2px solid #5a3a1a;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    color: #e8c97a;
+    font-size: 13px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.status.warning { color: #ff6b6b; border-color: #ff6b6b; }
+
+button {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+button:active { transform: scale(0.96); }
+
+.btn-new {
+    background: #5a8a3c;
+    color: #fff;
+}
+.btn-new:hover { background: #6a9a4c; }
+
+.btn-undo {
+    background: #8a5a3c;
+    color: #fff;
+}
+.btn-undo:hover { background: #9a6a4c; }
+
+.btn-group {
+    display: flex;
+    gap: 8px;
+}
+
+.rules-box {
+    background: #2a1a0a;
+    border: 2px solid #5a3a1a;
+    border-radius: 10px;
+    padding: 12px;
+    color: #b8946e;
+    font-size: 12px;
+    line-height: 1.7;
+}
+.rules-box strong { color: #e8c97a; }
+
+footer {
+    color: #6a4a2a;
+    font-size: 11px;
+}
+
+@media (max-width: 700px) {
+    .game-area {
+        flex-direction: column;
+        align-items: center;
+    }
+    .sidebar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        min-width: 0;
+    }
+    canvas { width: 90vw; height: 90vw; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>五 子 棋</h1>
+    <div class="game-area">
+        <div class="canvas-wrapper">
+            <canvas id="board"></canvas>
+        </div>
+        <div class="sidebar">
+            <div class="turn-indicator" id="turnIndicator">
+                <div class="turn-stone black" id="turnStone"></div>
+                <div class="turn-text" id="turnText">黑方落子</div>
+            </div>
+            <div class="status" id="status">黑方先行 <br>注意禁手规则</div>
+            <div class="btn-group">
+                <button class="btn-new" id="btnNew">新游戏</button>
+                <button class="btn-undo" id="btnUndo">悔棋</button>
+            </div>
+            <div class="rules-box">
+                <strong>禁手规则（黑方）</strong><br>
+                · 三三禁手：同时形成两个活三<br>
+                · 四四禁手：同时形成两个四<br>
+                · 长连禁手：形成六个以上连子<br>
+                <strong>白方无禁手</strong>
+            </div>
+        </div>
+    </div>
+    <footer>禁手仅在落子时判罚 · 五连与禁手同时形成时五连优先</footer>
+</div>
+
+<script>
+(function() {
+    // ── Constants ──────────────────────────────
+    const BOARD_SIZE = 15;
+    const EMPTY = 0, BLACK = 1, WHITE = 2;
+    const DIRECTIONS = [[0,1], [1,0], [1,1], [1,-1]];
+
+    const CELL = 40;
+    const PAD = 40;
+    const CANVAS = PAD * 2 + CELL * (BOARD_SIZE - 1); // 40+560=600
+
+    // Star points (0-indexed)
+    const STARS = [[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]];
+
+    // ── DOM ────────────────────────────────────
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const turnStone = document.getElementById('turnStone');
+    const turnText = document.getElementById('turnText');
+    const statusEl = document.getElementById('status');
+
+    canvas.width = CANVAS;
+    canvas.height = CANVAS;
+
+    // ── State ──────────────────────────────────
+    let board, currentPlayer, gameOver, winner, history, lastMove, statusMsg, forbiddenSet;
+
+    function initState() {
+        board = Array.from({length: BOARD_SIZE}, () => new Array(BOARD_SIZE).fill(EMPTY));
+        currentPlayer = BLACK;
+        gameOver = false;
+        winner = null;
+        history = [];
+        lastMove = null;
+        statusMsg = '';
+        forbiddenSet = new Set();
+    }
+
+    function recomputeForbidden() {
+        forbiddenSet.clear();
+        if (gameOver || currentPlayer !== BLACK) return;
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                if (board[r][c] !== EMPTY) continue;
+                if (checkForbidden(r, c).forbidden) {
+                    forbiddenSet.add(r + ',' + c);
+                }
+            }
+        }
+    }
+
+    function isForbidden(r, c) {
+        return forbiddenSet.has(r + ',' + c);
+    }
+
+    // ── Pattern helpers ────────────────────────
+    function isLiveThreePattern(p) {
+        return p === '_XXX_' || p === '_XX_X' || p === '_X_XX';
+    }
+
+    // ── Board logic ────────────────────────────
+    function checkWin(r, c) {
+        const player = board[r][c];
+        for (const [dr, dc] of DIRECTIONS) {
+            let count = 1;
+            for (let i = 1; i < 5; i++) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) count++;
+                else break;
+            }
+            for (let i = 1; i < 5; i++) {
+                const nr = r - dr * i, nc = c - dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) count++;
+                else break;
+            }
+            if (player === BLACK && count === 5) return true;
+            if (player === WHITE && count >= 5) return true;
+        }
+        return false;
+    }
+
+    function checkForbidden(r, c) {
+        board[r][c] = BLACK;
+
+        let hasFive = false;
+        const fourSet = new Set();
+        const threeSet = new Set();
+
+        for (const [dr, dc] of DIRECTIONS) {
+            // Count consecutive
+            let count = 1;
+            for (let i = 1; i <= 5; i++) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === BLACK) count++;
+                else break;
+            }
+            for (let i = 1; i <= 5; i++) {
+                const nr = r - dr * i, nc = c - dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === BLACK) count++;
+                else break;
+            }
+
+            if (count >= 6) {
+                board[r][c] = EMPTY;
+                return { forbidden: true, reason: '长连禁手（六子连珠）' };
+            }
+            if (count === 5) hasFive = true;
+
+            // Build a 9-cell line centered at (r,c)
+            const line = [];
+            for (let i = -4; i <= 4; i++) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                    line.push({ r: nr, c: nc, v: board[nr][nc] });
+                }
+            }
+            const ci = line.findIndex(p => p.r === r && p.c === c);
+            if (ci < 0) continue;
+
+            for (let start = 0; start <= line.length - 5; start++) {
+                if (start > ci || ci >= start + 5) continue;
+                const win = line.slice(start, start + 5);
+                const stoneCount = win.filter(p => p.v === BLACK).length;
+                const emptyCount = win.filter(p => p.v === EMPTY).length;
+
+                if (stoneCount === 4 && emptyCount === 1) {
+                    const key = win.filter(p => p.v === BLACK).map(p => p.r + ',' + p.c).sort().join('|');
+                    fourSet.add(key);
+                }
+                if (stoneCount === 3 && emptyCount === 2) {
+                    const pat = win.map(p => p.v === BLACK ? 'X' : (p.v === EMPTY ? '_' : 'O')).join('');
+                    if (isLiveThreePattern(pat)) {
+                        const key = win.filter(p => p.v === BLACK).map(p => p.r + ',' + p.c).sort().join('|');
+                        threeSet.add(key);
+                    }
+                }
+            }
+        }
+
+        board[r][c] = EMPTY;
+
+        // Filter out threes whose stones are a subset of a four's stones.
+        // A four absorbs any three inside it — otherwise 四三 is wrongly flagged as 三三.
+        const fourStoneSets = [...fourSet].map(k => new Set(k.split('|')));
+        const liveThrees = [...threeSet].filter(tKey => {
+            const tStones = new Set(tKey.split('|'));
+            for (const fStones of fourStoneSets) {
+                if ([...tStones].every(s => fStones.has(s))) return false;
+            }
+            return true;
+        });
+
+        if (hasFive) return { forbidden: false };
+        if (fourSet.size >= 2) return { forbidden: true, reason: '四四禁手（双四）' };
+        if (liveThrees.length >= 2) return { forbidden: true, reason: '三三禁手（双活三）' };
+
+        return { forbidden: false };
+    }
+
+    function placeStone(r, c) {
+        if (gameOver) return false;
+        if (board[r][c] !== EMPTY) return false;
+
+        if (currentPlayer === BLACK) {
+            const fb = checkForbidden(r, c);
+            if (fb.forbidden) {
+                statusMsg = fb.reason + ' — 此处不可落子';
+                updateStatus(true);
+                return false;
+            }
+        }
+
+        board[r][c] = currentPlayer;
+        history.push({ r, c, player: currentPlayer });
+        lastMove = { r, c };
+
+        if (checkWin(r, c)) {
+            gameOver = true;
+            winner = currentPlayer;
+            statusMsg = (currentPlayer === BLACK ? '黑方' : '白方') + '五连获胜！';
+            updateStatus();
+            updateTurn();
+            render();
+            return true;
+        }
+
+        if (history.length === BOARD_SIZE * BOARD_SIZE) {
+            gameOver = true;
+            winner = null;
+            statusMsg = '棋盘已满，平局！';
+            updateStatus();
+            updateTurn();
+            render();
+            return true;
+        }
+
+        currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+        recomputeForbidden();
+        statusMsg = '';
+        updateStatus();
+        updateTurn();
+        render();
+        return true;
+    }
+
+    function undoMove() {
+        if (history.length === 0) return;
+        const last = history.pop();
+        board[last.r][last.c] = EMPTY;
+        currentPlayer = last.player;
+        lastMove = history.length > 0 ? { r: history[history.length-1].r, c: history[history.length-1].c } : null;
+        gameOver = false;
+        winner = null;
+        recomputeForbidden();
+        statusMsg = '';
+        updateStatus();
+        updateTurn();
+        render();
+    }
+
+    // ── UI update ──────────────────────────────
+    function updateTurn() {
+        if (gameOver) {
+            if (winner === BLACK) {
+                turnStone.className = 'turn-stone black';
+                turnText.textContent = '黑方胜';
+            } else if (winner === WHITE) {
+                turnStone.className = 'turn-stone white';
+                turnText.textContent = '白方胜';
+            } else {
+                turnStone.className = 'turn-stone';
+                turnStone.style.background = '#888';
+                turnText.textContent = '平局';
+            }
+        } else {
+            if (currentPlayer === BLACK) {
+                turnStone.className = 'turn-stone black';
+                turnText.textContent = '黑方落子';
+            } else {
+                turnStone.className = 'turn-stone white';
+                turnText.textContent = '白方落子';
+            }
+        }
+    }
+
+    function updateStatus(warn) {
+        if (warn) {
+            statusEl.className = 'status warning';
+            statusEl.textContent = statusMsg;
+            // Clear warning after 2s
+            clearTimeout(statusEl._timeout);
+            statusEl._timeout = setTimeout(() => {
+                statusEl.className = 'status';
+                statusEl.textContent = statusMsg || defaultStatusText();
+            }, 2000);
+        } else {
+            statusEl.className = 'status';
+            statusEl.textContent = statusMsg || defaultStatusText();
+        }
+    }
+
+    function defaultStatusText() {
+        if (gameOver) return statusMsg;
+        const n = history.length + 1;
+        return '第 ' + n + ' 手 · ' + (currentPlayer === BLACK ? '黑方' : '白方');
+    }
+
+    // ── Rendering ──────────────────────────────
+    function render() {
+        const w = CANVAS, p = PAD, s = CELL;
+
+        // Background — warm wood
+        ctx.fillStyle = '#c8a45c';
+        ctx.fillRect(0, 0, w, w);
+
+        // Subtle wood grain
+        ctx.strokeStyle = 'rgba(139,90,43,0.08)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < w; i += 3) {
+            ctx.beginPath();
+            ctx.moveTo(0, i + Math.sin(i * 0.3) * 2);
+            ctx.lineTo(w, i + Math.sin(i * 0.3 + 1) * 2);
+            ctx.stroke();
+        }
+
+        // Grid lines
+        ctx.strokeStyle = '#4a3020';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < BOARD_SIZE; i++) {
+            // horizontal
+            ctx.beginPath();
+            ctx.moveTo(p, p + i * s);
+            ctx.lineTo(p + (BOARD_SIZE - 1) * s, p + i * s);
+            ctx.stroke();
+            // vertical
+            ctx.beginPath();
+            ctx.moveTo(p + i * s, p);
+            ctx.lineTo(p + i * s, p + (BOARD_SIZE - 1) * s);
+            ctx.stroke();
+        }
+
+        // Star points
+        for (const [sr, sc] of STARS) {
+            ctx.fillStyle = '#3a2010';
+            ctx.beginPath();
+            ctx.arc(p + sc * s, p + sr * s, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Forbidden square indicators (during black's turn)
+        if (!gameOver && currentPlayer === BLACK) {
+            for (const key of forbiddenSet) {
+                const [fr, fc] = key.split(',').map(Number);
+                const cx = p + fc * s, cy = p + fr * s;
+                ctx.fillStyle = 'rgba(200,40,40,0.35)';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Hover preview
+        if (!gameOver && hoverR >= 0 && hoverC >= 0 && board[hoverR][hoverC] === EMPTY) {
+            const forbiddenHover = currentPlayer === BLACK && isForbidden(hoverR, hoverC);
+            const cx = p + hoverC * s, cy = p + hoverR * s;
+            if (forbiddenHover) {
+                // Red X for forbidden
+                ctx.strokeStyle = '#ff3333';
+                ctx.lineWidth = 2;
+                const hs = 7;
+                ctx.beginPath();
+                ctx.moveTo(cx - hs, cy - hs);
+                ctx.lineTo(cx + hs, cy + hs);
+                ctx.moveTo(cx + hs, cy - hs);
+                ctx.lineTo(cx - hs, cy + hs);
+                ctx.stroke();
+            } else {
+                // Ghost stone
+                if (currentPlayer === BLACK) {
+                    drawStone(cx, cy, 0.45, BLACK);
+                } else {
+                    drawStone(cx, cy, 0.45, WHITE);
+                }
+            }
+        }
+
+        // Stones
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                if (board[r][c] === EMPTY) continue;
+                const cx = p + c * s, cy = p + r * s;
+                drawStone(cx, cy, 1, board[r][c]);
+            }
+        }
+
+        // Last move marker
+        if (lastMove && !gameOver) {
+            const cx = p + lastMove.c * s, cy = p + lastMove.r * s;
+            ctx.fillStyle = board[lastMove.r][lastMove.c] === BLACK ? '#ff6666' : '#cc3333';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Win highlight — draw line through winning five
+        if (gameOver && winner && lastMove) {
+            highlightWin(lastMove.r, lastMove.c);
+        }
+
+        // Border outline
+        ctx.strokeStyle = '#3a2010';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(p - 1, p - 1, (BOARD_SIZE - 1) * s + 2, (BOARD_SIZE - 1) * s + 2);
+    }
+
+    function drawStone(cx, cy, alpha, player) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const r = CELL * 0.44;
+        if (player === BLACK) {
+            const grad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+            grad.addColorStop(0, '#555');
+            grad.addColorStop(0.7, '#111');
+            grad.addColorStop(1, '#000');
+            ctx.fillStyle = grad;
+        } else {
+            const grad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.6, '#e8e8e8');
+            grad.addColorStop(1, '#aaaaaa');
+            ctx.fillStyle = grad;
+        }
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        // Subtle border
+        ctx.strokeStyle = player === BLACK ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function highlightWin(r, c) {
+        const player = board[r][c];
+        let wr = 0, wc = 0, wdr = 0, wdc = 0;
+        for (const [dr, dc] of DIRECTIONS) {
+            let cnt = 1;
+            for (let i = 1; i < 5; i++) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) cnt++;
+                else break;
+            }
+            let startR = r, startC = c;
+            for (let i = 1; i < 5; i++) {
+                const nr = r - dr * i, nc = c - dc * i;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+                    cnt++;
+                    startR = nr;
+                    startC = nc;
+                } else break;
+            }
+            if (cnt >= 5) {
+                wr = startR; wc = startC;
+                wdr = dr; wdc = dc;
+                break;
+            }
+        }
+        const x1 = PAD + wc * CELL, y1 = PAD + wr * CELL;
+        const x2 = PAD + (wc + wdc * 4) * CELL, y2 = PAD + (wr + wdr * 4) * CELL;
+        ctx.strokeStyle = 'rgba(255,215,0,0.7)';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+    }
+
+    // ── Interaction ────────────────────────────
+    let hoverR = -1, hoverC = -1;
+
+    function posToGrid(ex, ey) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = CANVAS / rect.width;
+        const scaleY = CANVAS / rect.height;
+        const mx = (ex - rect.left) * scaleX;
+        const my = (ey - rect.top) * scaleY;
+        const c = Math.round((mx - PAD) / CELL);
+        const r = Math.round((my - PAD) / CELL);
+        if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return null;
+        const cx = PAD + c * CELL, cy = PAD + r * CELL;
+        const dist = Math.hypot(mx - cx, my - cy);
+        if (dist > CELL * 0.48) return null;
+        return { r, c };
+    }
+
+    canvas.addEventListener('click', function(e) {
+        const pos = posToGrid(e.clientX, e.clientY);
+        if (!pos) return;
+        placeStone(pos.r, pos.c);
+    });
+
+    canvas.addEventListener('mousemove', function(e) {
+        const pos = posToGrid(e.clientX, e.clientY);
+        if (pos && board[pos.r][pos.c] !== EMPTY) {
+            if (hoverR >= 0) { hoverR = -1; hoverC = -1; render(); }
+            return;
+        }
+        if (!pos && hoverR >= 0) {
+            hoverR = -1; hoverC = -1; render();
+            canvas.style.cursor = 'default';
+            return;
+        }
+        if (pos) {
+            if (pos.r !== hoverR || pos.c !== hoverC) {
+                hoverR = pos.r; hoverC = pos.c;
+                render();
+            }
+            // Check if forbidden for cursor
+            if (!gameOver && currentPlayer === BLACK && board[pos.r][pos.c] === EMPTY) {
+                canvas.style.cursor = isForbidden(pos.r, pos.c) ? 'not-allowed' : 'pointer';
+            } else {
+                canvas.style.cursor = gameOver ? 'default' : 'pointer';
+            }
+        }
+    });
+
+    canvas.addEventListener('mouseleave', function() {
+        if (hoverR >= 0) {
+            hoverR = -1; hoverC = -1;
+            render();
+        }
+    });
+
+    // Touch support
+    canvas.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const pos = posToGrid(touch.clientX, touch.clientY);
+        if (!pos) return;
+        placeStone(pos.r, pos.c);
+    });
+
+    // ── Buttons ────────────────────────────────
+    document.getElementById('btnNew').addEventListener('click', function() {
+        initState();
+        updateTurn();
+        updateStatus();
+        render();
+    });
+
+    document.getElementById('btnUndo').addEventListener('click', function() {
+        undoMove();
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'z') {
+            e.preventDefault();
+            undoMove();
+        } else if (e.key === 'r' || e.key === 'R') {
+            if (!e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
+                initState();
+                updateTurn();
+                updateStatus();
+                render();
+            }
+        }
+    });
+
+    // ── Init ───────────────────────────────────
+    initState();
+    updateTurn();
+    updateStatus();
+    render();
+})();
+</script>
+</body>
+</html>
