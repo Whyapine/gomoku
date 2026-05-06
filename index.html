@@ -423,7 +423,7 @@ footer {
 
     // ── State ──────────────────────────────────
     let board, currentPlayer, gameOver, winner, history, lastMove, statusMsg, forbiddenSet;
-    let tutorialActive = false, tutorialStep = 0, tutorialBoard = null, tutorialPulseTime = 0;
+    let tutorialActive = false, tutorialStep = 0, tutorialBoard = null, tutorialPulseTime = 0, tutStepDone = false;
 
     function initState() {
         board = Array.from({length: BOARD_SIZE}, () => new Array(BOARD_SIZE).fill(EMPTY));
@@ -490,6 +490,7 @@ footer {
 
     function loadTutorialStep() {
         const step = TUTORIAL_STEPS[tutorialStep];
+        tutStepDone = false;
         tutorialBoard = Array.from({length: BOARD_SIZE}, () => new Array(BOARD_SIZE).fill(EMPTY));
         currentPlayer = BLACK;
         history = [];
@@ -537,7 +538,8 @@ footer {
         document.getElementById('btnTutPrev').disabled = tutorialStep === 0;
         if (step.finalStep) {
             document.getElementById('btnTutNext').textContent = '开始对弈';
-        } else if (step.target) {
+            document.getElementById('btnTutNext').disabled = false;
+        } else if (step.target && !tutStepDone) {
             document.getElementById('btnTutNext').textContent = '下一步';
             document.getElementById('btnTutNext').disabled = true;
         } else {
@@ -667,31 +669,33 @@ footer {
             board[r][c] = BLACK;
             lastMove = { r, c };
             if (step.onPlaceWin) {
+                tutStepDone = true;
                 gameOver = true;
                 winner = BLACK;
                 statusMsg = '黑方五连获胜！';
                 updateStatus();
                 render();
-                document.getElementById('btnTutNext').disabled = false;
-                document.getElementById('btnTutNext').textContent = '下一步';
+                updateTutorialPanel();
                 const winStep = tutorialStep;
                 setTimeout(() => {
                     if (tutorialActive && tutorialStep === winStep) {
                         nextStep();
                     }
-                }, 2000);
+                }, 2200);
                 return true;
             }
             if (step.onPlaceAdvance) {
+                tutStepDone = true;
                 render();
+                updateTutorialPanel();
                 const advStep = tutorialStep;
                 setTimeout(() => {
                     if (tutorialActive && tutorialStep === advStep) nextStep();
-                }, 1500);
+                }, 1600);
                 return true;
             }
+            tutStepDone = true;
             render();
-            document.getElementById('btnTutNext').disabled = false;
             updateTutorialPanel();
             return true;
         }
