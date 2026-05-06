@@ -1122,10 +1122,11 @@ footer {
     });
 
     document.getElementById('btnTutNext').addEventListener('click', function() {
+        if (document.getElementById('btnTutNext').disabled) return;
         const step = TUTORIAL_STEPS[tutorialStep];
         if (step.finalStep) {
             exitTutorial();
-        } else if (!step.target) {
+        } else {
             nextStep();
         }
     });
