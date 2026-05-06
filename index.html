@@ -126,6 +126,89 @@ button:active { transform: scale(0.96); }
     gap: 8px;
 }
 
+.btn-tutorial {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #4a7dc4;
+    color: #fff;
+    transition: background 0.15s, transform 0.1s;
+}
+.btn-tutorial:hover { background: #5a8dd4; }
+.btn-tutorial:active { transform: scale(0.96); }
+
+.tutorial-panel {
+    background: #1e2a3a;
+    border: 2px solid #4a7dc4;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tutorial-progress {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+}
+.tutorial-progress .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #3a4a5a;
+    transition: background 0.3s;
+}
+.tutorial-progress .dot.active { background: #4a9de8; }
+.tutorial-progress .dot.done { background: #5aad6a; }
+
+.tutorial-title {
+    color: #7ab8f0;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.tutorial-text {
+    color: #b0c8e0;
+    font-size: 12.5px;
+    line-height: 1.7;
+    text-align: center;
+}
+
+.tutorial-nav {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.btn-tut-nav, .btn-tut-exit {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+.btn-tut-nav:active, .btn-tut-exit:active { transform: scale(0.95); }
+
+.btn-tut-nav { background: #3a5a7a; color: #c0d8f0; }
+.btn-tut-nav:hover { background: #4a6a8a; }
+.btn-tut-nav:disabled { background: #2a3a4a; color: #5a6a7a; cursor: default; }
+
+.btn-tut-exit { background: #7a3a3a; color: #f0c0c0; align-self: center; }
+.btn-tut-exit:hover { background: #8a4a4a; }
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.35); opacity: 0.3; }
+}
+
 .rules-box {
     background: #2a1a0a;
     border: 2px solid #5a3a1a;
@@ -174,7 +257,18 @@ footer {
                 <button class="btn-new" id="btnNew">新游戏</button>
                 <button class="btn-undo" id="btnUndo">悔棋</button>
             </div>
-            <div class="rules-box">
+            <button class="btn-tutorial" id="btnTutorial">教学模式</button>
+            <div class="tutorial-panel" id="tutorialPanel" style="display:none">
+                <div class="tutorial-progress" id="tutorialProgress"></div>
+                <div class="tutorial-title" id="tutorialTitle"></div>
+                <div class="tutorial-text" id="tutorialText"></div>
+                <div class="tutorial-nav">
+                    <button class="btn-tut-nav" id="btnTutPrev">上一步</button>
+                    <button class="btn-tut-nav" id="btnTutNext">下一步</button>
+                </div>
+                <button class="btn-tut-exit" id="btnTutExit">退出教学</button>
+            </div>
+            <div class="rules-box" id="rulesBox">
                 <strong>禁手规则（黑方）</strong><br>
                 · 三三禁手：同时形成两个活三<br>
                 · 四四禁手：同时形成两个四<br>
@@ -200,6 +294,123 @@ footer {
     // Star points (0-indexed)
     const STARS = [[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]];
 
+    // ── Tutorial data ──────────────────────────
+    const B = BLACK, W = WHITE;
+    const TUTORIAL_STEPS = [
+        {
+            title: '认识棋盘',
+            text: '这是15×15的五子棋棋盘。\n交叉点是落子位置，中间及四角的黑点是星位标记。',
+            stones: [],
+            highlights: [...STARS.map(s => ({r:s[0],c:s[1],type:'dot',color:'rgba(100,180,255,0.6)'}))],
+            target: null,
+        },
+        {
+            title: '试试落子',
+            text: '点击中间闪烁的交叉点，放下一颗黑子。\n五子棋由黑方先行。',
+            stones: [],
+            highlights: [{r:7,c:7,type:'pulse',color:'rgba(100,200,100,0.9)'}],
+            target: {r:7,c:7},
+        },
+        {
+            title: '五连取胜',
+            text: '这四颗黑子已经横排连成一线，\n只差最后一步就能五连获胜！点击完成它。',
+            stones: [{r:7,c:3,p:B},{r:7,c:4,p:B},{r:7,c:5,p:B},{r:7,c:6,p:B}],
+            highlights: [
+                {r:7,c:3,type:'glow',color:'rgba(100,200,100,0.5)'},
+                {r:7,c:4,type:'glow',color:'rgba(100,200,100,0.5)'},
+                {r:7,c:5,type:'glow',color:'rgba(100,200,100,0.5)'},
+                {r:7,c:6,type:'glow',color:'rgba(100,200,100,0.5)'},
+                {r:7,c:7,type:'pulse',color:'rgba(100,255,100,0.9)'},
+            ],
+            target: {r:7,c:7},
+            onPlaceWin: true,
+        },
+        {
+            title: '黑方禁手',
+            text: '因为黑方先行优势太大，规则对黑方施加了\n"禁手"限制：三三、四四、长连均为禁手。\n白方不受任何禁手限制。',
+            stones: [],
+            highlights: [],
+            target: null,
+        },
+        {
+            title: '什么是"活三"',
+            text: '图中黑子形成"活三"——再下一子就能变成\n"活四"。常见形态：连三 _●●●_ 和跳三 _●●_●_',
+            stones: [{r:7,c:4,p:B},{r:7,c:5,p:B},{r:7,c:6,p:B}],
+            highlights: [
+                {r:7,c:4,type:'glow',color:'rgba(100,200,255,0.6)'},
+                {r:7,c:5,type:'glow',color:'rgba(100,200,255,0.6)'},
+                {r:7,c:6,type:'glow',color:'rgba(100,200,255,0.6)'},
+                {r:7,c:3,type:'dot',color:'rgba(255,200,100,0.7)',label:'空'},
+                {r:7,c:7,type:'dot',color:'rgba(255,200,100,0.7)',label:'空'},
+            ],
+            target: null,
+        },
+        {
+            title: '三三禁手',
+            text: '黑方若下在闪烁位置，会同时形成竖排和横排\n两个活三。这就是"三三禁手"，黑方不可落子！',
+            stones: [{r:4,c:7,p:B},{r:5,c:7,p:B},{r:7,c:5,p:B},{r:7,c:6,p:B}],
+            highlights: [
+                {r:4,c:7,type:'glow',color:'rgba(255,150,100,0.5)'},
+                {r:5,c:7,type:'glow',color:'rgba(255,150,100,0.5)'},
+                {r:7,c:5,type:'glow',color:'rgba(255,150,100,0.5)'},
+                {r:7,c:6,type:'glow',color:'rgba(255,150,100,0.5)'},
+                {r:7,c:7,type:'cross',color:'rgba(255,60,60,0.9)'},
+            ],
+            target: null,
+        },
+        {
+            title: '什么是"四"',
+            text: '四条黑子紧邻排列，只差一个空格就能五连。\n对手下一步必须堵住，否则就输了。',
+            stones: [{r:7,c:3,p:B},{r:7,c:4,p:B},{r:7,c:5,p:B},{r:7,c:6,p:B}],
+            highlights: [
+                {r:7,c:3,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:7,c:4,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:7,c:5,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:7,c:6,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:7,c:2,type:'dot',color:'rgba(255,100,100,0.8)',label:'堵'},
+                {r:7,c:7,type:'dot',color:'rgba(255,100,100,0.8)',label:'堵'},
+            ],
+            target: null,
+        },
+        {
+            title: '四三 · 黑方的武器',
+            text: '四三：同时做出一条"四"和一个"活三"。\n白方只能堵四，三就防不住了——这是黑方\n在禁手规则下最重要的取胜方式！',
+            stones: [{r:3,c:6,p:B},{r:4,c:6,p:B},{r:5,c:6,p:B},{r:6,c:4,p:B},{r:6,c:5,p:B}],
+            highlights: [
+                {r:3,c:6,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:4,c:6,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:5,c:6,type:'glow',color:'rgba(255,200,80,0.6)'},
+                {r:6,c:4,type:'glow',color:'rgba(100,200,255,0.6)'},
+                {r:6,c:5,type:'glow',color:'rgba(100,200,255,0.6)'},
+                {r:6,c:6,type:'pulse',color:'rgba(100,255,150,0.9)'},
+            ],
+            target: {r:6,c:6},
+            onPlaceAdvance: true,
+        },
+        {
+            title: '长连禁手',
+            text: '黑方不可形成6子及以上的连珠（长连禁手）。\n图中6连即为犯规。白方不受此限制。',
+            stones: [{r:7,c:2,p:B},{r:7,c:3,p:B},{r:7,c:4,p:B},{r:7,c:5,p:B},{r:7,c:6,p:B}],
+            highlights: [
+                {r:7,c:2,type:'glow',color:'rgba(255,80,80,0.5)'},
+                {r:7,c:3,type:'glow',color:'rgba(255,80,80,0.5)'},
+                {r:7,c:4,type:'glow',color:'rgba(255,80,80,0.5)'},
+                {r:7,c:5,type:'glow',color:'rgba(255,80,80,0.5)'},
+                {r:7,c:6,type:'glow',color:'rgba(255,80,80,0.5)'},
+                {r:7,c:7,type:'cross',color:'rgba(255,40,40,0.8)',label:'禁'},
+            ],
+            target: null,
+        },
+        {
+            title: '自由练习',
+            text: '你已经掌握了全部规则！\n现在开始自由对弈吧。尝试用四三击败对手。',
+            stones: [],
+            highlights: [],
+            target: null,
+            finalStep: true,
+        },
+    ];
+
     // ── DOM ────────────────────────────────────
     const canvas = document.getElementById('board');
     const ctx = canvas.getContext('2d');
@@ -212,6 +423,7 @@ footer {
 
     // ── State ──────────────────────────────────
     let board, currentPlayer, gameOver, winner, history, lastMove, statusMsg, forbiddenSet;
+    let tutorialActive = false, tutorialStep = 0, tutorialBoard = null, tutorialPulseTime = 0;
 
     function initState() {
         board = Array.from({length: BOARD_SIZE}, () => new Array(BOARD_SIZE).fill(EMPTY));
@@ -239,6 +451,108 @@ footer {
 
     function isForbidden(r, c) {
         return forbiddenSet.has(r + ',' + c);
+    }
+
+    // ── Tutorial control ───────────────────────
+    let tutRenderInterval = null;
+
+    function startTutorial() {
+        tutorialActive = true;
+        tutorialStep = 0;
+        gameOver = false;
+        winner = null;
+        history = [];
+        lastMove = null;
+        statusMsg = '';
+        forbiddenSet.clear();
+        loadTutorialStep();
+        document.getElementById('btnTutorial').style.display = 'none';
+        document.getElementById('tutorialPanel').style.display = '';
+        document.getElementById('rulesBox').style.display = 'none';
+        updateTutorialPanel();
+        render();
+        if (tutRenderInterval) clearInterval(tutRenderInterval);
+        tutRenderInterval = setInterval(render, 120);
+    }
+
+    function exitTutorial() {
+        tutorialActive = false;
+        tutorialBoard = null;
+        if (tutRenderInterval) { clearInterval(tutRenderInterval); tutRenderInterval = null; }
+        initState();
+        document.getElementById('btnTutorial').style.display = '';
+        document.getElementById('tutorialPanel').style.display = 'none';
+        document.getElementById('rulesBox').style.display = '';
+        updateTurn();
+        updateStatus();
+        render();
+    }
+
+    function loadTutorialStep() {
+        const step = TUTORIAL_STEPS[tutorialStep];
+        tutorialBoard = Array.from({length: BOARD_SIZE}, () => new Array(BOARD_SIZE).fill(EMPTY));
+        currentPlayer = BLACK;
+        history = [];
+        lastMove = null;
+        gameOver = false;
+        winner = null;
+        statusMsg = '';
+        forbiddenSet.clear();
+        for (const s of step.stones) {
+            tutorialBoard[s.r][s.c] = s.p;
+        }
+        board = tutorialBoard;
+        if (step.target) {
+            currentPlayer = BLACK;
+        }
+        tutorialPulseTime = Date.now();
+    }
+
+    function nextStep() {
+        if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+            tutorialStep++;
+            loadTutorialStep();
+        } else {
+            exitTutorial();
+            return;
+        }
+        updateTutorialPanel();
+        render();
+    }
+
+    function prevStep() {
+        if (tutorialStep > 0) {
+            tutorialStep--;
+            loadTutorialStep();
+        }
+        updateTutorialPanel();
+        render();
+    }
+
+    function updateTutorialPanel() {
+        const step = TUTORIAL_STEPS[tutorialStep];
+        const total = TUTORIAL_STEPS.length;
+        document.getElementById('tutorialTitle').textContent = '第' + (tutorialStep + 1) + '步 / 共' + total + '步 · ' + step.title;
+        document.getElementById('tutorialText').textContent = step.text;
+        document.getElementById('btnTutPrev').disabled = tutorialStep === 0;
+        if (step.finalStep) {
+            document.getElementById('btnTutNext').textContent = '开始对弈';
+        } else if (step.target) {
+            document.getElementById('btnTutNext').textContent = '下一步';
+            document.getElementById('btnTutNext').disabled = true;
+        } else {
+            document.getElementById('btnTutNext').textContent = '下一步';
+            document.getElementById('btnTutNext').disabled = false;
+        }
+        // Progress dots
+        let dots = '';
+        for (let i = 0; i < total; i++) {
+            let cls = 'dot';
+            if (i === tutorialStep) cls += ' active';
+            else if (i < tutorialStep) cls += ' done';
+            dots += '<span class="' + cls + '"></span>';
+        }
+        document.getElementById('tutorialProgress').innerHTML = dots;
     }
 
     // ── Pattern helpers ────────────────────────
@@ -346,6 +660,42 @@ footer {
     }
 
     function placeStone(r, c) {
+        // Tutorial mode: only allow clicking the target
+        if (tutorialActive) {
+            const step = TUTORIAL_STEPS[tutorialStep];
+            if (!step.target || r !== step.target.r || c !== step.target.c) return false;
+            board[r][c] = BLACK;
+            lastMove = { r, c };
+            if (step.onPlaceWin) {
+                gameOver = true;
+                winner = BLACK;
+                statusMsg = '黑方五连获胜！';
+                updateStatus();
+                render();
+                document.getElementById('btnTutNext').disabled = false;
+                document.getElementById('btnTutNext').textContent = '下一步';
+                const winStep = tutorialStep;
+                setTimeout(() => {
+                    if (tutorialActive && tutorialStep === winStep) {
+                        nextStep();
+                    }
+                }, 2000);
+                return true;
+            }
+            if (step.onPlaceAdvance) {
+                render();
+                const advStep = tutorialStep;
+                setTimeout(() => {
+                    if (tutorialActive && tutorialStep === advStep) nextStep();
+                }, 1500);
+                return true;
+            }
+            render();
+            document.getElementById('btnTutNext').disabled = false;
+            updateTutorialPanel();
+            return true;
+        }
+
         if (gameOver) return false;
         if (board[r][c] !== EMPTY) return false;
 
@@ -496,7 +846,7 @@ footer {
         }
 
         // Forbidden square indicators (during black's turn)
-        if (!gameOver && currentPlayer === BLACK) {
+        if (!tutorialActive && !gameOver && currentPlayer === BLACK) {
             for (const key of forbiddenSet) {
                 const [fr, fc] = key.split(',').map(Number);
                 const cx = p + fc * s, cy = p + fr * s;
@@ -508,7 +858,7 @@ footer {
         }
 
         // Hover preview
-        if (!gameOver && hoverR >= 0 && hoverC >= 0 && board[hoverR][hoverC] === EMPTY) {
+        if (!tutorialActive && !gameOver && hoverR >= 0 && hoverC >= 0 && board[hoverR][hoverC] === EMPTY) {
             const forbiddenHover = currentPlayer === BLACK && isForbidden(hoverR, hoverC);
             const cx = p + hoverC * s, cy = p + hoverR * s;
             if (forbiddenHover) {
@@ -553,6 +903,56 @@ footer {
         // Win highlight — draw line through winning five
         if (gameOver && winner && lastMove) {
             highlightWin(lastMove.r, lastMove.c);
+        }
+
+        // Tutorial highlights
+        if (tutorialActive && TUTORIAL_STEPS[tutorialStep]) {
+            const now = Date.now();
+            const pulsePhase = (now - tutorialPulseTime) / 1000 * Math.PI * 2;
+            for (const h of TUTORIAL_STEPS[tutorialStep].highlights) {
+                const hx = p + h.c * s, hy = p + h.r * s;
+                if (h.type === 'pulse') {
+                    const t = (Math.sin(pulsePhase) + 1) / 2;
+                    const r = 14 + t * 6;
+                    ctx.strokeStyle = h.color.replace('0.9', String(0.3 + t * 0.6));
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                    // inner dot
+                    ctx.fillStyle = h.color;
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (h.type === 'glow') {
+                    ctx.fillStyle = h.color;
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, CELL * 0.46, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (h.type === 'cross') {
+                    const sz = 8;
+                    ctx.strokeStyle = h.color;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(hx - sz, hy - sz);
+                    ctx.lineTo(hx + sz, hy + sz);
+                    ctx.moveTo(hx + sz, hy - sz);
+                    ctx.lineTo(hx - sz, hy + sz);
+                    ctx.stroke();
+                } else if (h.type === 'dot') {
+                    ctx.fillStyle = h.color;
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Label text
+                if (h.label) {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 12px "Microsoft YaHei","PingFang SC",sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(h.label, hx, hy - CELL * 0.6);
+                }
+            }
         }
 
         // Border outline
@@ -650,6 +1050,16 @@ footer {
     });
 
     canvas.addEventListener('mousemove', function(e) {
+        if (tutorialActive) {
+            const pos = posToGrid(e.clientX, e.clientY);
+            const step = TUTORIAL_STEPS[tutorialStep];
+            if (pos && step.target && pos.r === step.target.r && pos.c === step.target.c && board[pos.r][pos.c] === EMPTY) {
+                canvas.style.cursor = 'pointer';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+            return;
+        }
         const pos = posToGrid(e.clientX, e.clientY);
         if (pos && board[pos.r][pos.c] !== EMPTY) {
             if (hoverR >= 0) { hoverR = -1; hoverC = -1; render(); }
@@ -665,7 +1075,6 @@ footer {
                 hoverR = pos.r; hoverC = pos.c;
                 render();
             }
-            // Check if forbidden for cursor
             if (!gameOver && currentPlayer === BLACK && board[pos.r][pos.c] === EMPTY) {
                 canvas.style.cursor = isForbidden(pos.r, pos.c) ? 'not-allowed' : 'pointer';
             } else {
@@ -692,6 +1101,7 @@ footer {
 
     // ── Buttons ────────────────────────────────
     document.getElementById('btnNew').addEventListener('click', function() {
+        if (tutorialActive) return;
         initState();
         updateTurn();
         updateStatus();
@@ -699,11 +1109,34 @@ footer {
     });
 
     document.getElementById('btnUndo').addEventListener('click', function() {
+        if (tutorialActive) return;
         undoMove();
+    });
+
+    document.getElementById('btnTutorial').addEventListener('click', function() {
+        startTutorial();
+    });
+
+    document.getElementById('btnTutPrev').addEventListener('click', function() {
+        prevStep();
+    });
+
+    document.getElementById('btnTutNext').addEventListener('click', function() {
+        const step = TUTORIAL_STEPS[tutorialStep];
+        if (step.finalStep) {
+            exitTutorial();
+        } else if (!step.target) {
+            nextStep();
+        }
+    });
+
+    document.getElementById('btnTutExit').addEventListener('click', function() {
+        exitTutorial();
     });
 
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
+        if (tutorialActive) return;
         if (e.ctrlKey && e.key === 'z') {
             e.preventDefault();
             undoMove();
